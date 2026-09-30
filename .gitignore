@@ -1,0 +1,43 @@
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+.env
+
+output/*
+!output/.gitkeep
+
+settings/*.local.json
+
+# Python generated files
+__pycache__/
+*.py[cod]
+*.pyd
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Local configuration
+.env
+settings/*.local.json
+
+# Generated output
+output/*
+!output/.gitkeep
+
+# Temporary files
+*.tmp
+*.bak
+*.log
+
+# IDE files
+.vscode/
+.idea/
+
+# Windows files
+Thumbs.db
+Desktop.ini
+

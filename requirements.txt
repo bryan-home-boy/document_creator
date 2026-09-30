@@ -1,0 +1,6 @@
+PySide6
+Pillow
+python-barcode
+pylibdmtx
+reportlab
+openpyxl
