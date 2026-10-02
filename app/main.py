@@ -2,870 +2,700 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 
 
-class DocumentCreatorApp(tk.Tk):
-    def __init__(self):
-        super().__init__()
+# ============================================================
+# Constants
+# ============================================================
 
-        self.title("Document Creator")
-        self.geometry("1200x800")
-        self.minsize(950, 650)
+DPI = 96
 
-        self.selected_label = None
+PAGE_WIDTH_INCHES = 8.5
+PAGE_HEIGHT_INCHES = 11.0
 
-        self.zoom = 0.75
-        self.dpi = 96
+TEMPLATES = {
+    "Plain Document": {
+        "columns": 0,
+        "rows": 0,
+        "left_margin": 0,
+        "top_margin": 0,
+        "label_width": 0,
+        "label_height": 0,
+        "horizontal_gap": 0,
+        "vertical_gap": 0,
+    },
+    "Avery 5160": {
+        "columns": 3,
+        "rows": 10,
+        "left_margin": 0.1875,
+        "top_margin": 0.5,
+        "label_width": 2.625,
+        "label_height": 1.0,
+        "horizontal_gap": 0.125,
+        "vertical_gap": 0.0,
+    },
+    "Avery 5163": {
+        "columns": 2,
+        "rows": 5,
+        "left_margin": 0.5,
+        "top_margin": 0.5,
+        "label_width": 4.0,
+        "label_height": 2.0,
+        "horizontal_gap": 0.125,
+        "vertical_gap": 0.0,
+    },
+}
 
-        self.page_width_inches = 8.5
-        self.page_height_inches = 11.0
+
+class DocumentCreatorApp:
+    # ========================================================
+    # Initialization
+    # ========================================================
+
+    def __init__(self, root):
+        self.root = root
+        self.root.title("Document Creator")
+        self.root.geometry("1280x820")
+        self.root.minsize(1000, 650)
+
+        self.dpi = DPI
+        self.zoom = 0.85
+
+        self.selected_label = 1
+
+        # Saved document objects remain available after redraws.
+        self.document_objects = []
+
+        self.label_text_var = tk.StringVar(value="Sample Label")
+        self.selected_label_var = tk.StringVar(value="Selected Label: 1")
+        self.start_label_var = tk.StringVar(value="Label 1")
+        self.template_var = tk.StringVar(value="Plain Document")
+        self.object_count_var = tk.StringVar(value="0")
+        self.status_var = tk.StringVar(value="Ready")
 
         self.create_menu()
-        self.create_layout()
-        self.create_page_designer()
+        self.create_main_layout()
+        self.draw_page()
 
-    # ---------------------------------------------------------
+    # ========================================================
     # Menus
-    # ---------------------------------------------------------
+    # ========================================================
 
     def create_menu(self):
-        menu_bar = tk.Menu(self)
+        menu_bar = tk.Menu(self.root)
 
         file_menu = tk.Menu(menu_bar, tearoff=False)
-        file_menu.add_command(
-            label="New",
-            command=self.new_document,
-        )
-        file_menu.add_command(label="Open...")
-        file_menu.add_command(label="Save")
+        file_menu.add_command(label="New", command=self.new_document)
+        file_menu.add_command(label="Open", command=self.not_implemented)
+        file_menu.add_command(label="Save", command=self.not_implemented)
+        file_menu.add_command(label="Save As...", command=self.not_implemented)
         file_menu.add_separator()
         file_menu.add_command(
             label="Print Preview",
             command=self.print_preview,
         )
-        file_menu.add_command(label="Print")
+        file_menu.add_command(label="Print", command=self.not_implemented)
         file_menu.add_separator()
-        file_menu.add_command(
-            label="Exit",
-            command=self.destroy,
-        )
-        menu_bar.add_cascade(
-            label="File",
-            menu=file_menu,
-        )
+        file_menu.add_command(label="Exit", command=self.root.destroy)
+        menu_bar.add_cascade(label="File", menu=file_menu)
 
         options_menu = tk.Menu(menu_bar, tearoff=False)
-        options_menu.add_command(label="Application Options...")
-        options_menu.add_command(label="Printer Setup...")
-        menu_bar.add_cascade(
-            label="Options",
-            menu=options_menu,
+        options_menu.add_command(
+            label="Document Settings",
+            command=self.not_implemented,
         )
+        options_menu.add_command(
+            label="Application Options",
+            command=self.not_implemented,
+        )
+        menu_bar.add_cascade(label="Options", menu=options_menu)
 
         database_menu = tk.Menu(menu_bar, tearoff=False)
-        database_menu.add_command(label="Import CSV...")
         database_menu.add_command(
-            label="Manage Data Sources..."
+            label="Import CSV",
+            command=self.not_implemented,
         )
-        menu_bar.add_cascade(
-            label="Database",
-            menu=database_menu,
+        database_menu.add_command(
+            label="Manage Data Sources",
+            command=self.not_implemented,
         )
+        menu_bar.add_cascade(label="Database", menu=database_menu)
 
         objects_menu = tk.Menu(menu_bar, tearoff=False)
+        objects_menu.add_command(label="Add Text", command=self.add_text)
         objects_menu.add_command(
-            label="Add Text",
-            command=self.add_text,
-        )
-        objects_menu.add_command(
-            label="Add Barcode",
+            label="Add Barcode Placeholder",
             command=self.add_barcode,
         )
-        objects_menu.add_command(label="Add Image")
-        menu_bar.add_cascade(
-            label="Objects",
-            menu=objects_menu,
-        )
+        menu_bar.add_cascade(label="Objects", menu=objects_menu)
 
         view_menu = tk.Menu(menu_bar, tearoff=False)
-        view_menu.add_command(
-            label="Zoom In",
-            command=self.zoom_in,
-        )
-        view_menu.add_command(
-            label="Zoom Out",
-            command=self.zoom_out,
-        )
-        view_menu.add_command(
-            label="Fit Page",
-            command=self.fit_page,
-        )
-        menu_bar.add_cascade(
-            label="View",
-            menu=view_menu,
-        )
+        view_menu.add_command(label="Zoom In", command=self.zoom_in)
+        view_menu.add_command(label="Zoom Out", command=self.zoom_out)
+        view_menu.add_command(label="Fit Page", command=self.fit_page)
+        menu_bar.add_cascade(label="View", menu=view_menu)
 
         help_menu = tk.Menu(menu_bar, tearoff=False)
-        help_menu.add_command(
-            label="About Document Creator",
-            command=self.show_about,
-        )
-        menu_bar.add_cascade(
-            label="Help",
-            menu=help_menu,
-        )
+        help_menu.add_command(label="About", command=self.show_about)
+        menu_bar.add_cascade(label="Help", menu=help_menu)
 
-        self.config(menu=menu_bar)
+        self.root.config(menu=menu_bar)
 
-    # ---------------------------------------------------------
+    # ========================================================
     # Main layout
-    # ---------------------------------------------------------
+    # ========================================================
 
-    def create_layout(self):
-        self.left_panel = ttk.Frame(
-            self,
-            padding=12,
-        )
-        self.left_panel.pack(
-            side=tk.LEFT,
-            fill=tk.Y,
-        )
+    def create_main_layout(self):
+        main_frame = ttk.Frame(self.root, padding=8)
+        main_frame.pack(fill=tk.BOTH, expand=True)
 
-        self.center_panel = ttk.Frame(
-            self,
-            padding=12,
-        )
-        self.center_panel.pack(
-            side=tk.LEFT,
-            fill=tk.BOTH,
-            expand=True,
-        )
+        main_frame.columnconfigure(1, weight=1)
+        main_frame.rowconfigure(0, weight=1)
 
-        self.right_panel = ttk.Frame(
-            self,
-            padding=12,
-        )
-        self.right_panel.pack(
-            side=tk.RIGHT,
-            fill=tk.Y,
-        )
+        self.create_left_panel(main_frame)
+        self.create_canvas_panel(main_frame)
+        self.create_right_panel(main_frame)
 
-        # Left panel
         ttk.Label(
-            self.left_panel,
+            self.root,
+            textvariable=self.status_var,
+            relief=tk.SUNKEN,
+            anchor=tk.W,
+            padding=(6, 3),
+        ).pack(side=tk.BOTTOM, fill=tk.X)
+
+    def create_left_panel(self, parent):
+        panel = ttk.LabelFrame(
+            parent,
+            text="Documents and Templates",
+            padding=8,
+        )
+        panel.grid(row=0, column=0, sticky="ns", padx=(0, 8))
+
+        ttk.Label(
+            panel,
             text="Document",
-            font=("Segoe UI", 16, "bold"),
-        ).pack(
-            anchor=tk.W,
-            pady=(0, 15),
-        )
-
-        ttk.Label(
-            self.left_panel,
-            text="Page size",
+            font=("Arial", 10, "bold"),
         ).pack(anchor=tk.W)
-
-        self.page_size_var = tk.StringVar(
-            value="Letter - 8.5 x 11 inches"
-        )
-
-        ttk.Combobox(
-            self.left_panel,
-            textvariable=self.page_size_var,
-            state="readonly",
-            width=28,
-            values=[
-                "Letter - 8.5 x 11 inches",
-                "A4 - 8.27 x 11.69 inches",
-                "Custom",
-            ],
-        ).pack(
-            anchor=tk.W,
-            pady=(4, 15),
-        )
-
-        ttk.Label(
-            self.left_panel,
-            text="Template",
-        ).pack(anchor=tk.W)
-
-        self.template_var = tk.StringVar(
-            value="Avery 5160 - Address Labels"
-        )
-
-        ttk.Combobox(
-            self.left_panel,
-            textvariable=self.template_var,
-            state="readonly",
-            width=28,
-            values=[
-                "None",
-                "Avery 5160 - Address Labels",
-                "Avery 5163 - Shipping Labels",
-                "Custom Template",
-            ],
-        ).pack(
-            anchor=tk.W,
-            pady=(4, 15),
-        )
-
-        ttk.Label(
-            self.left_panel,
-            text="Start printing at label",
-        ).pack(anchor=tk.W)
-
-        self.start_label_var = tk.StringVar(
-            value="Label 1"
-        )
-
-        self.start_label_box = ttk.Combobox(
-            self.left_panel,
-            textvariable=self.start_label_var,
-            state="readonly",
-            width=28,
-        )
-        self.start_label_box.pack(
-            anchor=tk.W,
-            pady=(4, 15),
-        )
 
         ttk.Button(
-            self.left_panel,
+            panel,
+            text="New Document",
+            command=self.new_document,
+            width=24,
+        ).pack(fill=tk.X, pady=(6, 14))
+
+        ttk.Label(
+            panel,
+            text="Template",
+            font=("Arial", 10, "bold"),
+        ).pack(anchor=tk.W)
+
+        ttk.Combobox(
+            panel,
+            textvariable=self.template_var,
+            values=list(TEMPLATES.keys()),
+            state="readonly",
+            width=22,
+        ).pack(fill=tk.X, pady=(6, 4))
+
+        ttk.Button(
+            panel,
             text="Apply Template",
             command=self.apply_template,
-        ).pack(
-            anchor=tk.W,
-            pady=10,
-        )
+            width=24,
+        ).pack(fill=tk.X, pady=(0, 14))
 
-        ttk.Separator(
-            self.left_panel,
-            orient=tk.HORIZONTAL,
-        ).pack(
-            fill=tk.X,
-            pady=18,
-        )
+        ttk.Separator(panel).pack(fill=tk.X, pady=6)
 
         ttk.Label(
-            self.left_panel,
-            text="Zoom",
-            font=("Segoe UI", 10, "bold"),
+            panel,
+            text="Text to Add",
+            font=("Arial", 10, "bold"),
         ).pack(anchor=tk.W)
-
-        ttk.Button(
-            self.left_panel,
-            text="Zoom In",
-            command=self.zoom_in,
-        ).pack(
-            anchor=tk.W,
-            fill=tk.X,
-            pady=(6, 2),
-        )
-
-        ttk.Button(
-            self.left_panel,
-            text="Zoom Out",
-            command=self.zoom_out,
-        ).pack(
-            anchor=tk.W,
-            fill=tk.X,
-            pady=2,
-        )
-
-        ttk.Button(
-            self.left_panel,
-            text="Fit Page",
-            command=self.fit_page,
-        ).pack(
-            anchor=tk.W,
-            fill=tk.X,
-            pady=2,
-        )
-
-        # Right panel
-        ttk.Label(
-            self.right_panel,
-            text="Properties",
-            font=("Segoe UI", 16, "bold"),
-        ).pack(
-            anchor=tk.W,
-            pady=(0, 15),
-        )
-
-        self.selected_label_var = tk.StringVar(
-            value="No label selected"
-        )
-
-        ttk.Label(
-            self.right_panel,
-            textvariable=self.selected_label_var,
-        ).pack(
-            anchor=tk.W,
-            pady=(0, 15),
-        )
-
-        ttk.Label(
-            self.right_panel,
-            text="Text object content",
-        ).pack(anchor=tk.W)
-
-        self.label_text_var = tk.StringVar(
-            value="Sample Label"
-        )
 
         ttk.Entry(
-            self.right_panel,
+            panel,
             textvariable=self.label_text_var,
-            width=28,
-        ).pack(
-            anchor=tk.W,
-            pady=(4, 10),
-        )
+            width=25,
+        ).pack(fill=tk.X, pady=(6, 4))
 
         ttk.Button(
-            self.right_panel,
+            panel,
             text="Add Text to Page",
             command=self.add_text,
-        ).pack(
-            anchor=tk.W,
-            fill=tk.X,
-            pady=2,
-        )
+            width=24,
+        ).pack(fill=tk.X, pady=(0, 6))
 
         ttk.Button(
-            self.right_panel,
-            text="Update Selected Label",
-            command=self.update_selected_label,
-        ).pack(
-            anchor=tk.W,
-            fill=tk.X,
-            pady=2,
-        )
-
-        ttk.Button(
-            self.right_panel,
+            panel,
             text="Add Barcode Placeholder",
             command=self.add_barcode,
-        ).pack(
-            anchor=tk.W,
-            fill=tk.X,
-            pady=2,
-        )
+            width=24,
+        ).pack(fill=tk.X)
 
-        ttk.Separator(
-            self.right_panel,
-            orient=tk.HORIZONTAL,
-        ).pack(
-            fill=tk.X,
-            pady=20,
+    def create_canvas_panel(self, parent):
+        panel = ttk.LabelFrame(
+            parent,
+            text="Document Designer",
+            padding=8,
         )
-
-        ttk.Label(
-            self.right_panel,
-            text="Status",
-            font=("Segoe UI", 10, "bold"),
-        ).pack(anchor=tk.W)
-
-        self.status_var = tk.StringVar(
-            value="Ready"
-        )
-
-        ttk.Label(
-            self.right_panel,
-            textvariable=self.status_var,
-            foreground="gray",
-            wraplength=210,
-        ).pack(
-            anchor=tk.W,
-            pady=(5, 0),
-        )
-
-    # ---------------------------------------------------------
-    # Full-page canvas designer
-    # ---------------------------------------------------------
-
-    def create_page_designer(self):
-        self.canvas_frame = ttk.Frame(
-            self.center_panel
-        )
-        self.canvas_frame.pack(
-            fill=tk.BOTH,
-            expand=True,
-        )
-
-        self.canvas_frame.rowconfigure(
-            0,
-            weight=1,
-        )
-        self.canvas_frame.columnconfigure(
-            0,
-            weight=1,
-        )
+        panel.grid(row=0, column=1, sticky="nsew")
+        panel.rowconfigure(0, weight=1)
+        panel.columnconfigure(0, weight=1)
 
         self.canvas = tk.Canvas(
-            self.canvas_frame,
-            background="#D8D8D8",
+            panel,
+            background="#777777",
             highlightthickness=0,
         )
-        self.canvas.grid(
-            row=0,
-            column=0,
-            sticky="nsew",
-        )
+        self.canvas.grid(row=0, column=0, sticky="nsew")
 
         vertical_scrollbar = ttk.Scrollbar(
-            self.canvas_frame,
+            panel,
             orient=tk.VERTICAL,
             command=self.canvas.yview,
         )
-        vertical_scrollbar.grid(
-            row=0,
-            column=1,
-            sticky="ns",
-        )
+        vertical_scrollbar.grid(row=0, column=1, sticky="ns")
 
         horizontal_scrollbar = ttk.Scrollbar(
-            self.canvas_frame,
+            panel,
             orient=tk.HORIZONTAL,
             command=self.canvas.xview,
         )
-        horizontal_scrollbar.grid(
-            row=1,
-            column=0,
-            sticky="ew",
-        )
+        horizontal_scrollbar.grid(row=1, column=0, sticky="ew")
 
         self.canvas.configure(
-            yscrollcommand=vertical_scrollbar.set,
             xscrollcommand=horizontal_scrollbar.set,
+            yscrollcommand=vertical_scrollbar.set,
         )
 
-        self.canvas.bind(
-            "<Button-1>",
-            self.canvas_clicked,
+        self.canvas.bind("<Button-1>", self.canvas_click)
+
+    def create_right_panel(self, parent):
+        panel = ttk.LabelFrame(
+            parent,
+            text="Properties and Status",
+            padding=8,
+        )
+        panel.grid(row=0, column=2, sticky="ns", padx=(8, 0))
+
+        ttk.Label(
+            panel,
+            textvariable=self.selected_label_var,
+            font=("Arial", 10, "bold"),
+        ).pack(anchor=tk.W, pady=(0, 12))
+
+        ttk.Label(panel, text="Start Printing At").pack(anchor=tk.W)
+
+        values = [f"Label {number}" for number in range(1, 31)]
+
+        self.start_label_combo = ttk.Combobox(
+            panel,
+            textvariable=self.start_label_var,
+            values=values,
+            state="readonly",
+            width=20,
+        )
+        self.start_label_combo.pack(fill=tk.X, pady=(6, 12))
+        self.start_label_combo.bind(
+            "<<ComboboxSelected>>",
+            self.start_label_changed,
         )
 
-        self.draw_page()
+        ttk.Separator(panel).pack(fill=tk.X, pady=8)
+
+        ttk.Label(
+            panel,
+            text="View",
+            font=("Arial", 10, "bold"),
+        ).pack(anchor=tk.W)
+
+        ttk.Button(
+            panel,
+            text="Zoom In",
+            command=self.zoom_in,
+            width=22,
+        ).pack(fill=tk.X, pady=(6, 4))
+
+        ttk.Button(
+            panel,
+            text="Zoom Out",
+            command=self.zoom_out,
+            width=22,
+        ).pack(fill=tk.X, pady=4)
+
+        ttk.Button(
+            panel,
+            text="Fit Page",
+            command=self.fit_page,
+            width=22,
+        ).pack(fill=tk.X, pady=4)
+
+        ttk.Separator(panel).pack(fill=tk.X, pady=12)
+
+        ttk.Label(panel, text="Objects on Page").pack(anchor=tk.W)
+
+        ttk.Label(
+            panel,
+            textvariable=self.object_count_var,
+            font=("Arial", 14, "bold"),
+        ).pack(anchor=tk.W, pady=(4, 12))
+
+        ttk.Button(
+            panel,
+            text="Print Preview",
+            command=self.print_preview,
+            width=22,
+        ).pack(fill=tk.X)
+
+    # ========================================================
+    # Drawing
+    # ========================================================
 
     def draw_page(self):
         self.canvas.delete("all")
 
-        page_width = int(
-            self.page_width_inches
-            * self.dpi
-            * self.zoom
+        page_width = PAGE_WIDTH_INCHES * self.dpi * self.zoom
+        page_height = PAGE_HEIGHT_INCHES * self.dpi * self.zoom
+        padding = 35
+
+        self.page_left = padding
+        self.page_top = padding
+
+        page_right = self.page_left + page_width
+        page_bottom = self.page_top + page_height
+
+        self.canvas.create_rectangle(
+            self.page_left + 5,
+            self.page_top + 5,
+            page_right + 5,
+            page_bottom + 5,
+            fill="#444444",
+            outline="",
         )
 
-        page_height = int(
-            self.page_height_inches
-            * self.dpi
-            * self.zoom
+        self.canvas.create_rectangle(
+            self.page_left,
+            self.page_top,
+            page_right,
+            page_bottom,
+            fill="white",
+            outline="#222222",
         )
 
-        page_x = 60
-        page_y = 45
-
-        self.page_x = page_x
-        self.page_y = page_y
-        self.page_width = page_width
-        self.page_height = page_height
+        self.draw_label_guides()
+        self.draw_document_objects()
 
         self.canvas.configure(
             scrollregion=(
                 0,
                 0,
-                page_x + page_width + 80,
-                page_y + page_height + 80,
+                page_right + padding,
+                page_bottom + padding,
             )
         )
 
-        # Page shadow
-        self.canvas.create_rectangle(
-            page_x + 5,
-            page_y + 5,
-            page_x + page_width + 5,
-            page_y + page_height + 5,
-            fill="#AAAAAA",
-            outline="",
-            tags="page_shadow",
-        )
+        self.object_count_var.set(str(len(self.document_objects)))
 
-        # White page
-        self.canvas.create_rectangle(
-            page_x,
-            page_y,
-            page_x + page_width,
-            page_y + page_height,
-            fill="white",
-            outline="#777777",
-            width=1,
-            tags="page",
-        )
+    def draw_label_guides(self):
+        template = TEMPLATES[self.template_var.get()]
 
-        self.canvas.create_text(
-            page_x,
-            page_y - 12,
-            text=(
-                f"Letter page — "
-                f"{self.page_width_inches} x "
-                f"{self.page_height_inches} inches — "
-                f"{int(self.zoom * 100)}%"
-            ),
-            anchor=tk.SW,
-            fill="#555555",
-            font=("Segoe UI", 9),
-        )
+        columns = template["columns"]
+        rows = template["rows"]
 
-        if self.template_var.get() != "None":
-            self.draw_label_guides(
-                page_x,
-                page_y,
+        if columns == 0 or rows == 0:
+            return
+
+        for number in range(1, columns * rows + 1):
+            index = number - 1
+            row = index // columns
+            column = index % columns
+
+            x = template["left_margin"] + column * (
+                template["label_width"] + template["horizontal_gap"]
+            )
+            y = template["top_margin"] + row * (
+                template["label_height"] + template["vertical_gap"]
             )
 
-        # Initial sample objects
-        self.canvas.create_text(
-            page_x + 45,
-            page_y + 45,
-            text="Sample Document",
-            anchor=tk.NW,
-            fill="#222222",
-            font=("Arial", 18, "bold"),
-            tags=(
-                "document_object",
-                "sample_text",
-            ),
-        )
+            x1 = self.page_left + x * self.dpi * self.zoom
+            y1 = self.page_top + y * self.dpi * self.zoom
+            x2 = x1 + template["label_width"] * self.dpi * self.zoom
+            y2 = y1 + template["label_height"] * self.dpi * self.zoom
 
-        self.canvas.create_text(
-            page_x + 45,
-            page_y + 88,
-            text="Full-page document designer",
-            anchor=tk.NW,
-            fill="#555555",
-            font=("Arial", 11),
-            tags=(
-                "document_object",
-                "sample_instruction",
-            ),
-        )
+            tag = f"label_{number}"
+            fill = "#e9f3ff" if number == self.selected_label else ""
 
-        self.status_var.set(
-            f"Page displayed at {int(self.zoom * 100)}%"
-        )
+            self.canvas.create_rectangle(
+                x1,
+                y1,
+                x2,
+                y2,
+                outline="#72a7d8",
+                fill=fill,
+                tags=(tag, "label"),
+            )
 
-    def draw_label_guides(self, page_x, page_y):
-        columns = 3
-        rows = 10
+            self.canvas.create_text(
+                x1 + 4,
+                y1 + 3,
+                text=str(number),
+                anchor=tk.NW,
+                fill="#6d8ca8",
+                font=("Arial", max(7, int(8 * self.zoom))),
+                tags=(tag, "label_number"),
+            )
 
-        # Approximate Avery 5160 dimensions
-        left_margin = 0.1875
-        top_margin = 0.5
-        label_width = 2.625
-        label_height = 1.0
-        horizontal_gap = 0.125
-        vertical_gap = 0.0
+    def draw_document_objects(self):
+        for item in self.document_objects:
+            x = self.page_left + (
+                item.get("x", 0) * self.dpi * self.zoom
+            )
+            y = self.page_top + (
+                item.get("y", 0) * self.dpi * self.zoom
+            )
 
-        scale = self.dpi * self.zoom
-
-        for row in range(rows):
-            for column in range(columns):
-                x = page_x + (
-                    left_margin
-                    + column * (
-                        label_width
-                        + horizontal_gap
-                    )
-                ) * scale
-
-                y = page_y + (
-                    top_margin
-                    + row * (
-                        label_height
-                        + vertical_gap
-                    )
-                ) * scale
-
-                width = label_width * scale
-                height = label_height * scale
-
-                label_number = row * columns + column + 1
-
-                self.canvas.create_rectangle(
-                    x,
-                    y,
-                    x + width,
-                    y + height,
-                    outline="#8FAECC",
-                    dash=(4, 3),
-                    width=1,
-                    tags=(
-                        "label_guide",
-                        f"label_{label_number}",
-                    ),
+            if item["type"] == "text":
+                font_name, font_size = item.get(
+                    "font",
+                    ("Arial", 12),
                 )
 
                 self.canvas.create_text(
-                    x + 5,
-                    y + 4,
-                    text=str(label_number),
+                    x,
+                    y,
+                    text=item.get("text", ""),
                     anchor=tk.NW,
-                    fill="#7892AD",
-                    font=("Segoe UI", 8),
-                    tags=(
-                        "label_guide",
-                        f"label_{label_number}",
+                    fill=item.get("fill", "#222222"),
+                    font=(
+                        font_name,
+                        max(1, int(font_size * self.zoom)),
                     ),
+                    tags=("document_object",),
                 )
 
-    # ---------------------------------------------------------
-    # Canvas interaction
-    # ---------------------------------------------------------
+            elif item["type"] == "barcode":
+                self.draw_barcode_placeholder(x, y)
 
-    def canvas_clicked(self, event):
-        canvas_x = self.canvas.canvasx(event.x)
-        canvas_y = self.canvas.canvasy(event.y)
-
-        clicked_items = self.canvas.find_overlapping(
-            canvas_x,
-            canvas_y,
-            canvas_x,
-            canvas_y,
-        )
-
-        selected_label = None
-
-        for item_id in clicked_items:
-            tags = self.canvas.gettags(item_id)
-
-            for tag in tags:
-                if tag.startswith("label_"):
-                    selected_label = int(
-                        tag.replace("label_", "")
-                    )
-                    break
-
-            if selected_label is not None:
-                break
-
-        if selected_label is not None:
-            self.select_canvas_label(
-                selected_label
-            )
-
-    def select_canvas_label(self, number):
-        self.selected_label = number
-
-        self.selected_label_var.set(
-            f"Label {number} selected"
-        )
-
-        self.start_label_var.set(
-            f"Label {number}"
-        )
-
-        self.canvas.delete("selection")
-
-        columns = 3
-
-        left_margin = 0.1875
-        top_margin = 0.5
-        label_width = 2.625
-        label_height = 1.0
-        horizontal_gap = 0.125
-        vertical_gap = 0.0
-
-        scale = self.dpi * self.zoom
-
-        row = (number - 1) // columns
-        column = (number - 1) % columns
-
-        x = self.page_x + (
-            left_margin
-            + column * (
-                label_width
-                + horizontal_gap
-            )
-        ) * scale
-
-        y = self.page_y + (
-            top_margin
-            + row * (
-                label_height
-                + vertical_gap
-            )
-        ) * scale
-
-        width = label_width * scale
-        height = label_height * scale
+    def draw_barcode_placeholder(self, x, y):
+        width = 1.65 * self.dpi * self.zoom
+        height = 0.42 * self.dpi * self.zoom
 
         self.canvas.create_rectangle(
             x,
             y,
             x + width,
             y + height,
-            outline="#1473E6",
-            width=3,
-            tags="selection",
-        )
-
-        self.canvas.tag_raise("selection")
-
-        self.status_var.set(
-            f"Label {number} selected"
-        )
-
-    # ---------------------------------------------------------
-    # Document actions
-    # ---------------------------------------------------------
-
-    def add_text(self):
-        self.canvas.create_text(
-            self.page_x + 45,
-            self.page_y + 150,
-            text=self.label_text_var.get(),
-            anchor=tk.NW,
-            fill="#222222",
-            font=("Arial", 12),
-            tags=(
-                "document_object",
-                "text_object",
-            ),
-        )
-
-        self.status_var.set(
-            "Text object added to page"
-        )
-
-    def add_barcode(self):
-        self.canvas.create_rectangle(
-            self.page_x + 45,
-            self.page_y + 200,
-            self.page_x + 240,
-            self.page_y + 250,
             fill="white",
             outline="#222222",
-            width=1,
-            tags=(
-                "document_object",
-                "barcode_placeholder",
-            ),
+            tags=("document_object",),
         )
+
+        bar_widths = [2, 1, 1, 3, 1, 2, 1, 1, 3, 2, 1, 2, 3, 1]
+
+        current_x = x + 5 * self.zoom
+
+        for index, bar_width in enumerate(bar_widths):
+            scaled_width = max(1, bar_width * self.zoom)
+
+            self.canvas.create_rectangle(
+                current_x,
+                y + 5 * self.zoom,
+                current_x + scaled_width,
+                y + height - 5 * self.zoom,
+                fill="#111111" if index % 2 == 0 else "white",
+                outline="",
+                tags=("document_object",),
+            )
+
+            current_x += scaled_width
 
         self.canvas.create_text(
-            self.page_x + 142,
-            self.page_y + 225,
-            text="CODE 128 BARCODE",
-            fill="#222222",
-            font=("Arial", 10),
-            tags=(
-                "document_object",
-                "barcode_placeholder",
-            ),
+            x + width / 2,
+            y + height + 4 * self.zoom,
+            text="CODE 128 PLACEHOLDER",
+            anchor=tk.N,
+            fill="#444444",
+            font=("Arial", max(7, int(7 * self.zoom))),
+            tags=("document_object",),
         )
 
-        self.status_var.set(
-            "Barcode placeholder added"
-        )
+    # ========================================================
+    # Object actions
+    # ========================================================
 
-    def update_selected_label(self):
-        if self.selected_label is None:
-            self.status_var.set(
-                "Select a label first"
-            )
+    def add_text(self):
+        text = self.label_text_var.get().strip()
+
+        if not text:
+            self.status_var.set("Enter text before adding it.")
             return
 
-        self.status_var.set(
-            f"Text for label "
-            f"{self.selected_label} set to: "
-            f"{self.label_text_var.get()}"
+        self.document_objects.append(
+            {
+                "type": "text",
+                "text": text,
+                "x": 0.50,
+                "y": 1.05,
+                "font": ("Arial", 12),
+                "fill": "#222222",
+            }
         )
+
+        self.draw_page()
+        self.status_var.set(f'Text added: "{text}"')
+
+    def add_barcode(self):
+        self.document_objects.append(
+            {
+                "type": "barcode",
+                "x": 0.50,
+                "y": 1.45,
+            }
+        )
+
+        self.draw_page()
+        self.status_var.set("Barcode placeholder added.")
+
+    # ========================================================
+    # Document actions
+    # ========================================================
 
     def new_document(self):
-        self.selected_label = None
-        self.selected_label_var.set(
-            "No label selected"
-        )
-        self.label_text_var.set(
-            "Sample Label"
-        )
-        self.template_var.set(
-            "Avery 5160 - Address Labels"
-        )
+        self.document_objects.clear()
+        self.template_var.set("Plain Document")
+        self.selected_label = 1
+        self.selected_label_var.set("Selected Label: 1")
+        self.start_label_var.set("Label 1")
+        self.label_text_var.set("Sample Label")
+
         self.draw_page()
-        self.status_var.set(
-            "New document created"
-        )
+        self.status_var.set("New plain document created.")
 
     def apply_template(self):
-        self.selected_label = None
-        self.selected_label_var.set(
-            "No label selected"
-        )
+        template_name = self.template_var.get()
+
+        self.document_objects.clear()
+        self.selected_label = 1
+        self.selected_label_var.set("Selected Label: 1")
+        self.start_label_var.set("Label 1")
+
+        self.draw_page()
+        self.status_var.set(f"{template_name} template applied.")
+
+    # ========================================================
+    # Selection and view
+    # ========================================================
+
+    def canvas_click(self, event):
+        if self.template_var.get() == "Plain Document":
+            return
+
+        x = self.canvas.canvasx(event.x)
+        y = self.canvas.canvasy(event.y)
+
+        page_x = (x - self.page_left) / (self.dpi * self.zoom)
+        page_y = (y - self.page_top) / (self.dpi * self.zoom)
+
+        template = TEMPLATES[self.template_var.get()]
+        total_labels = template["columns"] * template["rows"]
+
+        for number in range(1, total_labels + 1):
+            index = number - 1
+            row = index // template["columns"]
+            column = index % template["columns"]
+
+            label_x = template["left_margin"] + column * (
+                template["label_width"] + template["horizontal_gap"]
+            )
+            label_y = template["top_margin"] + row * (
+                template["label_height"] + template["vertical_gap"]
+            )
+
+            if (
+                label_x <= page_x <= label_x + template["label_width"]
+                and label_y <= page_y <= label_y + template["label_height"]
+            ):
+                self.selected_label = number
+                self.selected_label_var.set(
+                    f"Selected Label: {number}"
+                )
+                self.start_label_var.set(f"Label {number}")
+                self.draw_page()
+                self.status_var.set(f"Label {number} selected.")
+                return
+
+    def start_label_changed(self, event=None):
+        try:
+            number = int(self.start_label_var.get().split()[-1])
+        except (ValueError, IndexError):
+            number = 1
+
+        self.selected_label = number
+        self.selected_label_var.set(f"Selected Label: {number}")
         self.draw_page()
         self.status_var.set(
-            f"{self.template_var.get()} applied"
+            f"Printing will start at Label {number}."
         )
-
-    def print_preview(self):
-        self.status_var.set(
-            "Print preview will be added later"
-        )
-
-    # ---------------------------------------------------------
-    # Zoom
-    # ---------------------------------------------------------
 
     def zoom_in(self):
-        self.zoom = min(
-            self.zoom + 0.10,
-            2.0,
-        )
+        self.zoom = min(2.0, self.zoom + 0.10)
         self.draw_page()
+        self.status_var.set(f"Zoom: {int(self.zoom * 100)}%")
 
     def zoom_out(self):
-        self.zoom = max(
-            self.zoom - 0.10,
-            0.30,
-        )
+        self.zoom = max(0.40, self.zoom - 0.10)
         self.draw_page()
+        self.status_var.set(f"Zoom: {int(self.zoom * 100)}%")
 
     def fit_page(self):
-        available_width = max(
-            self.center_panel.winfo_width() - 100,
-            400,
-        )
+        available_width = max(400, self.canvas.winfo_width() - 70)
+        available_height = max(400, self.canvas.winfo_height() - 70)
 
-        available_height = max(
-            self.center_panel.winfo_height() - 100,
-            400,
-        )
+        width_zoom = available_width / (PAGE_WIDTH_INCHES * self.dpi)
+        height_zoom = available_height / (PAGE_HEIGHT_INCHES * self.dpi)
 
-        width_zoom = available_width / (
-            self.page_width_inches * self.dpi
-        )
-
-        height_zoom = available_height / (
-            self.page_height_inches * self.dpi
-        )
-
-        self.zoom = min(
-            width_zoom,
-            height_zoom,
-        )
-
-        self.zoom = max(
-            min(self.zoom, 1.5),
-            0.30,
-        )
+        self.zoom = min(width_zoom, height_zoom)
+        self.zoom = max(0.40, min(self.zoom, 2.0))
 
         self.draw_page()
+        self.status_var.set(f"Page fitted: {int(self.zoom * 100)}%")
+
+    # ========================================================
+    # Dialogs
+    # ========================================================
+
+    def print_preview(self):
+        messagebox.showinfo(
+            "Print Preview",
+            (
+                "Print preview is planned for a future version.\n\n"
+                f"Template: {self.template_var.get()}\n"
+                f"Starting label: {self.start_label_var.get()}\n"
+                f"Objects: {len(self.document_objects)}"
+            ),
+        )
 
     def show_about(self):
         messagebox.showinfo(
             "About Document Creator",
-            "Document Creator\n\n"
-            "Python label and document designer",
+            (
+                "Document Creator\n\n"
+                "A label and document designer inspired by "
+                "Bear Rock Labeler."
+            ),
+        )
+
+    def not_implemented(self):
+        self.status_var.set(
+            "This feature is planned for a future version."
         )
 
 
+def main():
+    root = tk.Tk()
+    DocumentCreatorApp(root)
+    root.mainloop()
+
+
 if __name__ == "__main__":
-    app = DocumentCreatorApp()
-    app.mainloop()
+    main()
