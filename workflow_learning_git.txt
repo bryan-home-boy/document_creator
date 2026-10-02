@@ -1,0 +1,7 @@
+cd C:\document_creator
+git status
+git diff
+git add .
+git diff --cached
+git commit -m "Update document designer"
+git push
