@@ -1,0 +1,226 @@
+Project: Document Creator
+
+Location:
+C:\document_creator
+
+Purpose:
+Create a 64-bit Windows label and document designer inspired by Bear Rock Labeler.
+
+Planned features:
+- Traditional File, Options, Database, Objects, View, and Help menus
+- Document and label designer
+- Full-page canvas editing
+- Print preview
+- Start printing at a selected label on a partially used sheet
+- Avery address and shipping label templates
+- CSV/database merge fields
+- Code 128 barcodes
+- Data Matrix barcodes
+- Windows executable installer for company technicians
+
+GitHub:
+- GitHub account: bryan-home-boy
+- Repository: git@github.com:bryan-home-boy/document_creator.git
+- Local project: C:\document_creator
+- SSH authentication with GitHub is already working
+- The local repository still needs its first commit and push unless that has been completed separately
+
+Current project structure:
+C:\document_creator
+└── app
+    └── main.py
+
+Current application:
+The application is a Python Tkinter program located at:
+
+C:\document_creator\app\main.py
+
+It currently includes:
+- A Document Creator main window
+- File, Options, Database, Objects, View, and Help menus
+- Left document/template panel
+- Center canvas designer
+- Right properties/status panel
+- Letter-size page display
+- Approximate Avery 5160 label guides
+- Label selection by clicking a label
+- Zoom In
+- Zoom Out
+- Fit Page
+- New Document
+- Apply Template
+- Add Text
+- Add Barcode Placeholder
+- About dialog
+- Start-label selector
+- Placeholder print preview status message
+
+Important instruction:
+Whenever code changes are requested, provide the entire replacement file, not individual snippets or instructions to manually update sections.
+
+The preferred response format is:
+1. State the file being replaced.
+2. Provide the complete contents of the file in one code block.
+3. Provide the command to run and test it.
+4. Briefly explain the changes.
+
+Do not ask me to manually find and replace individual functions unless absolutely unavoidable.
+
+Current state of main.py:
+The application has this object-storage line in __init__():
+
+self.document_objects = []
+
+This list is intended to store text, barcode, image, and other document objects.
+
+Important current limitation:
+The application currently draws text and barcode objects directly onto the Tkinter canvas. The draw_page() method starts with:
+
+self.canvas.delete("all")
+
+Because of this, any objects added directly to the canvas disappear when:
+- Zooming in
+- Zooming out
+- Fitting the page
+- Applying a template
+- Redrawing the page
+
+Next development task:
+Complete the object-storage system.
+
+The next full replacement version of app/main.py should:
+
+1. Keep:
+   self.document_objects = []
+
+2. Add a draw_document_objects() method that redraws saved objects after the page and label guides are drawn.
+
+3. Change add_text() so it:
+   - Reads the text from self.label_text_var
+   - Adds a dictionary to self.document_objects
+   - Redraws the page
+   - Displays a status message
+
+4. Change add_barcode() so it:
+   - Adds a barcode dictionary to self.document_objects
+   - Redraws the page
+   - Displays a status message
+
+5. Call draw_document_objects() near the end of draw_page().
+
+6. Change new_document() so it clears saved document objects using:
+
+self.document_objects.clear()
+
+7. Make saved objects remain visible after zooming, applying templates, and other redraw operations.
+
+Suggested object formats:
+
+Text object:
+
+{
+    "type": "text",
+    "text": "Sample Label",
+    "x": 45,
+    "y": 150,
+    "font": ("Arial", 12),
+    "fill": "#222222"
+}
+
+Barcode object:
+
+{
+    "type": "barcode",
+    "x": 45,
+    "y": 200
+}
+
+Coordinates should be stored in unscaled page coordinates. The draw_document_objects() method should multiply coordinates by:
+
+self.dpi * self.zoom
+
+before drawing them on the canvas.
+
+Current label layout:
+The current label guide uses an approximate Avery 5160 layout:
+
+- 3 columns
+- 10 rows
+- 30 labels total
+- Left margin: 0.1875 inches
+- Top margin: 0.5 inches
+- Label width: 2.625 inches
+- Label height: 1.0 inch
+- Horizontal gap: 0.125 inches
+- Vertical gap: 0 inches
+- DPI: 96
+
+Current label selection:
+Labels are identified with tags such as:
+
+label_1
+label_2
+label_3
+
+The selected label is stored in:
+
+self.selected_label
+
+The displayed selection text is controlled by:
+
+self.selected_label_var
+
+The starting-label combobox is controlled by:
+
+self.start_label_var
+
+Current testing command:
+
+cd C:\document_creator
+python app\main.py
+
+Expected behavior:
+- A Document Creator window opens.
+- The page and label guides are visible.
+- Clicking a label selects it.
+- Add Text adds text to the page.
+- Add Barcode Placeholder adds a barcode placeholder.
+- Zoom buttons redraw the page.
+- New Document resets the document.
+
+After the object-persistence update, test:
+1. Start the application.
+2. Click Add Text to Page.
+3. Click Add Barcode Placeholder.
+4. Click Zoom In.
+5. Click Zoom Out.
+6. Click Fit Page.
+7. Confirm the text and barcode remain visible.
+8. Click File → New.
+9. Confirm the added objects are removed.
+
+Development order after object persistence:
+1. Make text and barcode objects persistent.
+2. Populate the start-label selector with Label 1 through Label 30.
+3. Improve template handling for Avery 5160 and Avery 5163.
+4. Make objects selectable and movable.
+5. Make text objects apply to selected labels.
+6. Add real Code 128 barcode generation.
+7. Add Data Matrix barcode generation.
+8. Add CSV import and merge fields.
+9. Add print preview.
+10. Add printing from a selected label on a partially used sheet.
+11. Add Save/Open document support.
+12. Package the program as a 64-bit Windows executable.
+13. Create an installer for company technicians.
+
+Coding preferences:
+- Use Python and Tkinter unless there is a strong reason to change.
+- Keep the code beginner-readable.
+- Use descriptive method names.
+- Keep the menu structure.
+- Preserve existing features when adding new ones.
+- Provide complete replacement files for changes.
+- Include comments separating major sections.
+- Test by running:
+  python app\main.py
