@@ -63,10 +63,6 @@ class DocumentCreatorApp:
 
         # Saved document objects remain available after redraws.
         self.document_objects = []
-        self.selected_object_index = None
-        self.dragging_object = False
-        self.drag_start_x = 0
-        self.drag_start_y = 0
 
         self.label_text_var = tk.StringVar(value="Sample Label")
         self.selected_label_var = tk.StringVar(value="Selected Label: 1")
@@ -273,8 +269,6 @@ class DocumentCreatorApp:
         )
 
         self.canvas.bind("<Button-1>", self.canvas_click)
-        self.canvas.bind("<B1-Motion>", self.canvas_drag)
-        self.canvas.bind("<ButtonRelease-1>", self.canvas_release)
 
     def create_right_panel(self, parent):
         panel = ttk.LabelFrame(
@@ -452,16 +446,13 @@ class DocumentCreatorApp:
             )
 
     def draw_document_objects(self):
-        for index, item in enumerate(self.document_objects):
+        for item in self.document_objects:
             x = self.page_left + (
                 item.get("x", 0) * self.dpi * self.zoom
             )
             y = self.page_top + (
                 item.get("y", 0) * self.dpi * self.zoom
             )
-
-            object_tag = f"object_{index}"
-            tags = ("document_object", object_tag)
 
             if item["type"] == "text":
                 font_name, font_size = item.get(
@@ -479,49 +470,13 @@ class DocumentCreatorApp:
                         font_name,
                         max(1, int(font_size * self.zoom)),
                     ),
-                    tags=tags,
+                    tags=("document_object",),
                 )
 
             elif item["type"] == "barcode":
-                self.draw_barcode_placeholder(
-                    x,
-                    y,
-                    tags=tags,
-                )
+                self.draw_barcode_placeholder(x, y)
 
-        self.draw_object_selection()
-
-    def draw_object_selection(self):
-        self.canvas.delete("selection_box")
-
-        if self.selected_object_index is None:
-            return
-
-        if not (0 <= self.selected_object_index < len(self.document_objects)):
-            return
-
-        object_tag = f"object_{self.selected_object_index}"
-        bbox = self.canvas.bbox(object_tag)
-
-        if not bbox:
-            return
-
-        x1, y1, x2, y2 = bbox
-        margin = max(3, int(4 * self.zoom))
-
-        self.canvas.create_rectangle(
-            x1 - margin,
-            y1 - margin,
-            x2 + margin,
-            y2 + margin,
-            outline="#0066cc",
-            dash=(4, 2),
-            width=max(1, int(self.zoom)),
-            tags=("selection_box",),
-        )
-        self.canvas.tag_raise("object_selection")
-
-    def draw_barcode_placeholder(self, x, y, tags=("document_object",)):
+    def draw_barcode_placeholder(self, x, y):
         width = 1.65 * self.dpi * self.zoom
         height = 0.42 * self.dpi * self.zoom
 
@@ -532,7 +487,7 @@ class DocumentCreatorApp:
             y + height,
             fill="white",
             outline="#222222",
-            tags=tags,
+            tags=("document_object",),
         )
 
         bar_widths = [2, 1, 1, 3, 1, 2, 1, 1, 3, 2, 1, 2, 3, 1]
@@ -549,7 +504,7 @@ class DocumentCreatorApp:
                 y + height - 5 * self.zoom,
                 fill="#111111" if index % 2 == 0 else "white",
                 outline="",
-                tags=tags,
+                tags=("document_object",),
             )
 
             current_x += scaled_width
@@ -561,7 +516,7 @@ class DocumentCreatorApp:
             anchor=tk.N,
             fill="#444444",
             font=("Arial", max(7, int(7 * self.zoom))),
-            tags=tags,
+            tags=("document_object",),
         )
 
     # ========================================================
@@ -607,8 +562,6 @@ class DocumentCreatorApp:
 
     def new_document(self):
         self.document_objects.clear()
-        self.selected_object_index = None
-        self.dragging_object = False
         self.template_var.set("Plain Document")
         self.selected_label = 1
         self.selected_label_var.set("Selected Label: 1")
@@ -622,8 +575,6 @@ class DocumentCreatorApp:
         template_name = self.template_var.get()
 
         self.document_objects.clear()
-        self.selected_object_index = None
-        self.dragging_object = False
         self.selected_label = 1
         self.selected_label_var.set("Selected Label: 1")
         self.start_label_var.set("Label 1")
@@ -636,31 +587,11 @@ class DocumentCreatorApp:
     # ========================================================
 
     def canvas_click(self, event):
+        if self.template_var.get() == "Plain Document":
+            return
+
         x = self.canvas.canvasx(event.x)
         y = self.canvas.canvasy(event.y)
-
-        # Document objects are selected before label guides so that an
-        # object placed on a label can be clicked and moved directly.
-        object_index = self.get_object_at_canvas_position(x, y)
-
-        if object_index is not None:
-            self.selected_object_index = object_index
-            self.dragging_object = True
-            self.drag_start_x = x
-            self.drag_start_y = y
-            self.draw_object_selection()
-            self.status_var.set(
-                f"Object {object_index + 1} selected. Drag to move it."
-            )
-            return
-
-        self.selected_object_index = None
-        self.dragging_object = False
-        self.draw_object_selection()
-
-        if self.template_var.get() == "Plain Document":
-            self.status_var.set("No object selected.")
-            return
 
         page_x = (x - self.page_left) / (self.dpi * self.zoom)
         page_y = (y - self.page_top) / (self.dpi * self.zoom)
@@ -692,79 +623,6 @@ class DocumentCreatorApp:
                 self.draw_page()
                 self.status_var.set(f"Label {number} selected.")
                 return
-
-        self.status_var.set("No object or label selected.")
-
-    def get_object_at_canvas_position(self, x, y):
-        """Return the topmost document object at a canvas position."""
-        overlapping_items = self.canvas.find_overlapping(x, y, x, y)
-
-        for canvas_item in reversed(overlapping_items):
-            tags = self.canvas.gettags(canvas_item)
-
-            for tag in tags:
-                if tag.startswith("object_"):
-                    try:
-                        index = int(tag.split("_", 1)[1])
-                    except (ValueError, IndexError):
-                        continue
-
-                    if 0 <= index < len(self.document_objects):
-                        return index
-
-        return None
-
-    def canvas_drag(self, event):
-        if not self.dragging_object:
-            return
-
-        if self.selected_object_index is None:
-            return
-
-        if not (0 <= self.selected_object_index < len(self.document_objects)):
-            return
-
-        x = self.canvas.canvasx(event.x)
-        y = self.canvas.canvasy(event.y)
-
-        delta_x_pixels = x - self.drag_start_x
-        delta_y_pixels = y - self.drag_start_y
-
-        if delta_x_pixels == 0 and delta_y_pixels == 0:
-            return
-
-        object_tag = f"object_{self.selected_object_index}"
-        self.canvas.move(object_tag, delta_x_pixels, delta_y_pixels)
-        self.canvas.move("selection_box", delta_x_pixels, delta_y_pixels)
-
-        item = self.document_objects[self.selected_object_index]
-        item["x"] += delta_x_pixels / (self.dpi * self.zoom)
-        item["y"] += delta_y_pixels / (self.dpi * self.zoom)
-
-        self.drag_start_x = x
-        self.drag_start_y = y
-
-        self.status_var.set(
-            f"Object {self.selected_object_index + 1} position: "
-            f"{item['x']:.2f}, {item['y']:.2f} in"
-        )
-
-    def canvas_release(self, event):
-        if not self.dragging_object:
-            return
-
-        self.dragging_object = False
-
-        # Redraw from the saved page-coordinate model so the canvas and
-        # stored object position stay synchronized after dragging.
-        self.draw_page()
-
-        if self.selected_object_index is not None:
-            item = self.document_objects[self.selected_object_index]
-            self.status_var.set(
-                f"Object {self.selected_object_index + 1} moved to "
-                f"{item['x']:.2f}, {item['y']:.2f} in."
-            )
 
     def start_label_changed(self, event=None):
         try:
