@@ -25,6 +25,8 @@ GitHub:
 - SSH authentication with GitHub is already working
 - The local repository still needs its first commit and push unless that has been completed separately
 
+learn git at the same time-help me with commands and explain as we build the program
+
 Current project structure:
 C:\document_creator
 └── app
