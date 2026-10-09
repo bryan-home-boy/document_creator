@@ -1,5 +1,5 @@
 import tkinter as tk
-from tkinter import ttk, messagebox
+from tkinter import ttk, messagebox, colorchooser, font as tkfont
 
 
 # ============================================================
@@ -74,6 +74,18 @@ class DocumentCreatorApp:
         self.template_var = tk.StringVar(value="Plain Document")
         self.object_count_var = tk.StringVar(value="0")
         self.status_var = tk.StringVar(value="Ready")
+
+        # Text formatting defaults used when new text is added.
+        self.text_font_family_var = tk.StringVar(value="Arial")
+        self.text_font_size_var = tk.StringVar(value="12")
+        self.text_bold_var = tk.BooleanVar(value=False)
+        self.text_italic_var = tk.BooleanVar(value=False)
+        self.text_underline_var = tk.BooleanVar(value=False)
+        self.text_alignment = "Left"
+        self.text_color = "#222222"
+        self.alignment_buttons = {}
+        self.text_edit_entry = None
+        self.text_edit_window = None
 
         self.create_menu()
         self.create_main_layout()
@@ -153,6 +165,8 @@ class DocumentCreatorApp:
     # ========================================================
 
     def create_main_layout(self):
+        self.create_formatting_toolbar()
+
         main_frame = ttk.Frame(self.root, padding=8)
         main_frame.pack(fill=tk.BOTH, expand=True)
 
@@ -170,6 +184,437 @@ class DocumentCreatorApp:
             anchor=tk.W,
             padding=(6, 3),
         ).pack(side=tk.BOTTOM, fill=tk.X)
+
+    def create_formatting_toolbar(self):
+        """Create a familiar word-processor style formatting toolbar."""
+        toolbar = ttk.Frame(self.root, padding=(8, 5))
+        toolbar.pack(side=tk.TOP, fill=tk.X)
+
+        ttk.Label(toolbar, text="Font").pack(side=tk.LEFT, padx=(0, 4))
+
+        try:
+            families = sorted(set(tkfont.families()))
+        except tk.TclError:
+            families = ["Arial", "Calibri", "Times New Roman", "Courier New"]
+
+        self.font_family_combo = ttk.Combobox(
+            toolbar,
+            textvariable=self.text_font_family_var,
+            values=families,
+            state="readonly",
+            width=18,
+        )
+        self.font_family_combo.pack(side=tk.LEFT, padx=(0, 5))
+        self.font_family_combo.bind(
+            "<<ComboboxSelected>>",
+            self.toolbar_font_family_selected,
+        )
+
+        self.font_size_combo = ttk.Combobox(
+            toolbar,
+            textvariable=self.text_font_size_var,
+            values=[str(size) for size in (8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 32, 36, 48, 72)],
+            width=5,
+        )
+        self.font_size_combo.pack(side=tk.LEFT, padx=(0, 5))
+        self.font_size_combo.bind(
+            "<<ComboboxSelected>>",
+            self.toolbar_size_selected,
+        )
+        self.font_size_combo.bind("<Return>", self.toolbar_font_changed)
+        # Do not apply formatting on FocusOut: it can steal focus while the
+        # user is choosing a value from the dropdown and cancel that choice.
+        self.font_size_combo.bind("<KeyRelease>", self.toolbar_size_key_release)
+
+        ttk.Separator(toolbar, orient=tk.VERTICAL).pack(
+            side=tk.LEFT, fill=tk.Y, padx=5
+        )
+
+        ttk.Checkbutton(
+            toolbar,
+            text="B",
+            variable=self.text_bold_var,
+            command=self.toolbar_toggle_format,
+        ).pack(side=tk.LEFT, padx=2)
+
+        ttk.Checkbutton(
+            toolbar,
+            text="I",
+            variable=self.text_italic_var,
+            command=self.toolbar_toggle_format,
+        ).pack(side=tk.LEFT, padx=2)
+
+        ttk.Checkbutton(
+            toolbar,
+            text="U",
+            variable=self.text_underline_var,
+            command=self.toolbar_toggle_format,
+        ).pack(side=tk.LEFT, padx=2)
+
+        self.text_color_button = tk.Button(
+            toolbar,
+            text="A",
+            width=3,
+            command=self.choose_text_color,
+            font=("Arial", 10, "bold"),
+            relief=tk.RAISED,
+        )
+        self.text_color_button.pack(side=tk.LEFT, padx=(4, 6))
+        self.update_color_button()
+
+        ttk.Separator(toolbar, orient=tk.VERTICAL).pack(
+            side=tk.LEFT, fill=tk.Y, padx=5
+        )
+
+        ttk.Label(toolbar, text="Alignment").pack(side=tk.LEFT, padx=(0, 4))
+
+        for alignment in ("Left", "Center", "Right"):
+            button = tk.Canvas(
+                toolbar,
+                width=30,
+                height=24,
+                highlightthickness=1,
+                highlightbackground="#b5b5b5",
+                background="#f0f0f0",
+                cursor="hand2",
+            )
+            button.pack(side=tk.LEFT, padx=2)
+            button.bind(
+                "<Button-1>",
+                lambda event, value=alignment: self.set_text_alignment(value),
+            )
+            self.alignment_buttons[alignment] = button
+            self.draw_alignment_icon(alignment)
+
+        ttk.Separator(toolbar, orient=tk.VERTICAL).pack(
+            side=tk.LEFT, fill=tk.Y, padx=8
+        )
+
+        ttk.Button(
+            toolbar,
+            text="Add Text",
+            command=self.add_text,
+        ).pack(side=tk.LEFT, padx=2)
+
+        ttk.Button(
+            toolbar,
+            text="Delete",
+            command=self.delete_selected_object,
+        ).pack(side=tk.LEFT, padx=2)
+
+        ttk.Label(
+            toolbar,
+            text="  Select text to format; changes also become the defaults for new text.",
+        ).pack(side=tk.LEFT, padx=(8, 0))
+
+    def get_toolbar_font_size(self):
+        try:
+            return max(1, int(self.text_font_size_var.get()))
+        except (TypeError, ValueError):
+            self.text_font_size_var.set("12")
+            return 12
+
+    def update_color_button(self):
+        if hasattr(self, "text_color_button"):
+            self.text_color_button.configure(fg=self.text_color, activeforeground=self.text_color)
+
+    def choose_text_color(self):
+        color = colorchooser.askcolor(
+            color=self.text_color,
+            title="Choose Text Color",
+            parent=self.root,
+        )
+        if color and color[1]:
+            self.text_color = color[1]
+            self.update_color_button()
+            self.toolbar_format_changed()
+
+    def update_toolbar_from_selected_object(self):
+        if self.selected_object_index is None:
+            self.update_alignment_buttons()
+            return
+        if not (0 <= self.selected_object_index < len(self.document_objects)):
+            return
+
+        item = self.document_objects[self.selected_object_index]
+        if item.get("type") != "text":
+            return
+
+        self.text_font_family_var.set(item.get("font_family", item.get("font", ("Arial", 12))[0]))
+        self.text_font_size_var.set(str(item.get("font_size", item.get("font", ("Arial", 12))[1])))
+        self.text_bold_var.set(item.get("bold", False))
+        self.text_italic_var.set(item.get("italic", False))
+        self.text_underline_var.set(item.get("underline", False))
+        self.text_color = item.get("fill", "#222222")
+        self.text_alignment = item.get("alignment", "Left")
+        self.update_color_button()
+        self.update_alignment_buttons()
+
+    def toolbar_font_family_selected(self, event=None):
+        """Apply the font family chosen from the dropdown immediately."""
+        # Read directly from the combobox so the handler uses the user's
+        # actual selection, even if Tk has not yet refreshed the StringVar.
+        family = self.font_family_combo.get().strip()
+        if not family:
+            return
+
+        self.text_font_family_var.set(family)
+
+        # If the text editor is open, save its text before redrawing the page.
+        if self.text_edit_entry is not None:
+            self.finish_text_edit(save=True)
+
+        if self.selected_object_index is None:
+            self.status_var.set(
+                f"New text will use the {family} font."
+            )
+            return
+
+        if not (0 <= self.selected_object_index < len(self.document_objects)):
+            return
+
+        item = self.document_objects[self.selected_object_index]
+        if item.get("type") != "text":
+            self.status_var.set("Select a text object to change its font.")
+            return
+
+        size = self.get_toolbar_font_size()
+        item["font_family"] = family
+        item["font_size"] = size
+        item["font"] = (family, size)
+
+        self.draw_page()
+        self.canvas.focus_set()
+        self.status_var.set(f"Font changed to {family}.")
+
+    def toolbar_size_selected(self, event=None):
+        """Apply a selected drop-down size after Tk finishes its focus events."""
+        # Tk can deliver FocusOut and ComboboxSelected close together. Waiting
+        # until idle lets the selected value settle before we apply it.
+        self.root.after_idle(self.apply_selected_font_size)
+
+    def apply_selected_font_size(self):
+        """Apply the font-size value currently displayed in the size combo."""
+        value = self.font_size_combo.get().strip()
+        if not value.isdigit():
+            return
+
+        size = int(value)
+        if size < 1 or size > 200:
+            return
+
+        self.text_font_size_var.set(str(size))
+
+        # Finish inline editing before updating the saved object and redrawing.
+        if self.text_edit_entry is not None:
+            self.finish_text_edit(save=True)
+
+        if self.selected_object_index is None:
+            self.status_var.set(f"New text will use {size}-point font.")
+            return
+
+        if not (0 <= self.selected_object_index < len(self.document_objects)):
+            return
+
+        item = self.document_objects[self.selected_object_index]
+        if item.get("type") != "text":
+            self.status_var.set("Select a text object to change its font size.")
+            return
+
+        family = self.text_font_family_var.get().strip() or "Arial"
+        item["font_family"] = family
+        item["font_size"] = size
+        item["font"] = (family, size)
+
+        self.draw_page()
+        self.canvas.focus_set()
+        self.status_var.set(f"Font size changed to {size}.")
+
+    def toolbar_size_key_release(self, event=None):
+        """Apply a typed font size to the selected text as soon as it is valid."""
+        value = self.font_size_combo.get().strip()
+        if not value.isdigit():
+            return
+
+        size = int(value)
+        if size < 1 or size > 200:
+            return
+
+        self.text_font_size_var.set(str(size))
+        self.toolbar_format_changed()
+
+    def toolbar_format_changed(self):
+        self.text_alignment = getattr(self, "text_alignment", "Left")
+
+        if self.selected_object_index is None:
+            self.update_color_button()
+            self.update_alignment_buttons()
+            return
+
+        if not (0 <= self.selected_object_index < len(self.document_objects)):
+            return
+
+        item = self.document_objects[self.selected_object_index]
+        if item.get("type") != "text":
+            return
+
+        family = self.text_font_family_var.get() or "Arial"
+        size = self.get_toolbar_font_size()
+        item["font_family"] = family
+        item["font_size"] = size
+        item["font"] = (family, size)
+        item["bold"] = self.text_bold_var.get()
+        item["italic"] = self.text_italic_var.get()
+        item["underline"] = self.text_underline_var.get()
+        item["fill"] = self.text_color
+        item["alignment"] = self.text_alignment
+
+        self.update_color_button()
+        self.update_alignment_buttons()
+        self.apply_alignment_to_item(item)
+        self.draw_page()
+        self.status_var.set("Text formatting updated.")
+
+    def toolbar_font_changed(self, event=None):
+        """Immediately apply font family and size to selected text."""
+        if self.selected_object_index is None:
+            return
+
+        if not (0 <= self.selected_object_index < len(self.document_objects)):
+            return
+
+        obj = self.document_objects[self.selected_object_index]
+        if obj.get("type") != "text":
+            return
+
+        family = self.text_font_family_var.get().strip() or "Arial"
+
+        try:
+            size = int(self.text_font_size_var.get())
+        except (TypeError, ValueError):
+            return
+
+        size = max(1, min(size, 200))
+
+        obj["font_family"] = family
+        obj["font_size"] = size
+        obj["font"] = (family, size)
+
+        self.draw_page()
+        self.canvas.focus_set()
+
+    def toolbar_toggle_format(self):
+        """Immediately apply bold, italic, and underline to selected text."""
+        if self.selected_object_index is None:
+            return
+
+        if not (0 <= self.selected_object_index < len(self.document_objects)):
+            return
+
+        obj = self.document_objects[self.selected_object_index]
+        if obj.get("type") != "text":
+            return
+
+        obj["bold"] = bool(self.text_bold_var.get())
+        obj["italic"] = bool(self.text_italic_var.get())
+        obj["underline"] = bool(self.text_underline_var.get())
+        obj["fill"] = self.text_color
+        obj["alignment"] = self.text_alignment
+
+        self.draw_page()
+        self.canvas.focus_set()
+
+    def set_text_alignment(self, alignment):
+        self.text_alignment = alignment
+        self.update_alignment_buttons()
+
+        if self.selected_object_index is None:
+            self.status_var.set(f"New text will be {alignment.lower()} aligned.")
+            return
+
+        if not (0 <= self.selected_object_index < len(self.document_objects)):
+            return
+
+        item = self.document_objects[self.selected_object_index]
+        if item.get("type") != "text":
+            return
+
+        item["alignment"] = alignment
+        self.apply_alignment_to_item(item)
+        self.draw_page()
+        self.status_var.set(f"Text aligned {alignment.lower()}.")
+
+    def get_alignment_region(self, item):
+        template_name = self.template_var.get()
+        if template_name == "Plain Document":
+            return 0.50, PAGE_WIDTH_INCHES - 0.50
+
+        template = TEMPLATES[template_name]
+        object_x = item.get("x", 0)
+        object_y = item.get("y", 0)
+        total_labels = template["columns"] * template["rows"]
+
+        for number in range(1, total_labels + 1):
+            index = number - 1
+            row = index // template["columns"]
+            column = index % template["columns"]
+            label_x = template["left_margin"] + column * (template["label_width"] + template["horizontal_gap"])
+            label_y = template["top_margin"] + row * (template["label_height"] + template["vertical_gap"])
+
+            if (label_x <= object_x <= label_x + template["label_width"] and
+                    label_y <= object_y <= label_y + template["label_height"]):
+                return label_x, label_x + template["label_width"]
+
+        return 0.50, PAGE_WIDTH_INCHES - 0.50
+
+    def apply_alignment_to_item(self, item):
+        alignment = item.get("alignment", "Left")
+        left, right = self.get_alignment_region(item)
+
+        if alignment == "Left":
+            item["x"] = left
+        elif alignment == "Center":
+            item["x"] = (left + right) / 2
+        elif alignment == "Right":
+            item["x"] = right
+
+    def draw_alignment_icon(self, alignment):
+        """Draw a simple Word/LibreOffice-style alignment icon."""
+        canvas = self.alignment_buttons[alignment]
+        canvas.delete("all")
+
+        widths = [18, 12, 18, 14]
+        y_positions = [5, 9, 13, 17]
+        canvas_width = 30
+
+        for width, y in zip(widths, y_positions):
+            if alignment == "Left":
+                x1 = 4
+            elif alignment == "Center":
+                x1 = (canvas_width - width) / 2
+            else:
+                x1 = canvas_width - width - 4
+
+            canvas.create_line(
+                x1, y, x1 + width, y,
+                fill="#222222",
+                width=2,
+            )
+
+        self.update_alignment_buttons()
+
+    def update_alignment_buttons(self):
+        for alignment, canvas in self.alignment_buttons.items():
+            if alignment == self.text_alignment:
+                canvas.configure(
+                    background="#d7eaff",
+                    highlightbackground="#0066cc",
+                )
+            else:
+                canvas.configure(
+                    background="#f0f0f0",
+                    highlightbackground="#b5b5b5",
+                )
 
     def create_left_panel(self, parent):
         panel = ttk.LabelFrame(
@@ -217,29 +662,22 @@ class DocumentCreatorApp:
 
         ttk.Label(
             panel,
-            text="Text to Add",
+            text="Objects",
             font=("Arial", 10, "bold"),
         ).pack(anchor=tk.W)
-
-        ttk.Entry(
-            panel,
-            textvariable=self.label_text_var,
-            width=25,
-        ).pack(fill=tk.X, pady=(6, 4))
-
-        ttk.Button(
-            panel,
-            text="Add Text to Page",
-            command=self.add_text,
-            width=24,
-        ).pack(fill=tk.X, pady=(0, 6))
 
         ttk.Button(
             panel,
             text="Add Barcode Placeholder",
             command=self.add_barcode,
             width=24,
-        ).pack(fill=tk.X)
+        ).pack(fill=tk.X, pady=(6, 4))
+
+        ttk.Label(
+            panel,
+            text="Tip: double-click text to edit it.",
+            wraplength=175,
+        ).pack(anchor=tk.W, pady=(8, 0))
 
     def create_canvas_panel(self, parent):
         panel = ttk.LabelFrame(
@@ -278,6 +716,7 @@ class DocumentCreatorApp:
         )
 
         self.canvas.bind("<Button-1>", self.canvas_click)
+        self.canvas.bind("<Double-Button-1>", self.canvas_double_click)
         self.canvas.bind("<Delete>", self.delete_selected_object)
         self.canvas.bind("<B1-Motion>", self.canvas_drag)
         self.canvas.bind("<ButtonRelease-1>", self.canvas_release)
@@ -472,18 +911,36 @@ class DocumentCreatorApp:
             if item["type"] == "text":
                 font_name, font_size = item.get(
                     "font",
-                    ("Arial", 12),
+                    (item.get("font_family", "Arial"), item.get("font_size", 12)),
                 )
+
+                if item.get("font_family"):
+                    font_name = item.get("font_family")
+                if item.get("font_size"):
+                    font_size = item.get("font_size")
+
+                font_weight = "bold" if item.get("bold", False) else "normal"
+                font_slant = "italic" if item.get("italic", False) else "roman"
+
+                alignment = item.get("alignment", "Left")
+                anchor = {
+                    "Left": tk.NW,
+                    "Center": tk.N,
+                    "Right": tk.NE,
+                }.get(alignment, tk.NW)
 
                 self.canvas.create_text(
                     x,
                     y,
                     text=item.get("text", ""),
-                    anchor=tk.NW,
+                    anchor=anchor,
                     fill=item.get("fill", "#222222"),
-                    font=(
-                        font_name,
-                        max(1, int(font_size * self.zoom)),
+                    font=tkfont.Font(
+                        family=font_name,
+                        size=max(1, int(font_size * self.zoom)),
+                        weight=font_weight,
+                        slant=font_slant,
+                        underline=item.get("underline", False),
                     ),
                     tags=tags,
                 )
@@ -525,7 +982,7 @@ class DocumentCreatorApp:
             width=max(1, int(self.zoom)),
             tags=("selection_box",),
         )
-        self.canvas.tag_raise("object_selection")
+        self.canvas.tag_raise("selection_box")
 
     def draw_barcode_placeholder(self, x, y, tags=("document_object",)):
         width = 1.65 * self.dpi * self.zoom
@@ -575,25 +1032,31 @@ class DocumentCreatorApp:
     # ========================================================
 
     def add_text(self):
-        text = self.label_text_var.get().strip()
+        """Add a new text object and immediately make it editable."""
+        font_size = self.get_toolbar_font_size()
 
-        if not text:
-            self.status_var.set("Enter text before adding it.")
-            return
+        item = {
+            "type": "text",
+            "text": "New Text",
+            "x": 0.50,
+            "y": 1.05,
+            "font": (self.text_font_family_var.get(), font_size),
+            "font_family": self.text_font_family_var.get(),
+            "font_size": font_size,
+            "bold": self.text_bold_var.get(),
+            "italic": self.text_italic_var.get(),
+            "underline": self.text_underline_var.get(),
+            "fill": self.text_color,
+            "alignment": self.text_alignment,
+        }
 
-        self.document_objects.append(
-            {
-                "type": "text",
-                "text": text,
-                "x": 0.50,
-                "y": 1.05,
-                "font": ("Arial", 12),
-                "fill": "#222222",
-            }
-        )
+        self.document_objects.append(item)
+        self.selected_object_index = len(self.document_objects) - 1
+        self.apply_alignment_to_item(item)
 
         self.draw_page()
-        self.status_var.set(f'Text added: "{text}"')
+        self.status_var.set("New text added. Type your text, then press Enter.")
+        self.root.after(50, lambda: self.begin_text_edit(self.selected_object_index))
 
     def add_barcode(self):
         self.document_objects.append(
@@ -612,6 +1075,7 @@ class DocumentCreatorApp:
     # ========================================================
 
     def new_document(self):
+        self.finish_text_edit(save=True)
         self.document_objects.clear()
         self.selected_object_index = None
         self.dragging_object = False
@@ -627,6 +1091,7 @@ class DocumentCreatorApp:
     def apply_template(self):
         template_name = self.template_var.get()
 
+        self.finish_text_edit(save=True)
         self.document_objects.clear()
         self.selected_object_index = None
         self.dragging_object = False
@@ -641,6 +1106,138 @@ class DocumentCreatorApp:
     # Selection and view
     # ========================================================
 
+    def canvas_double_click(self, event):
+        """Begin editing a text object directly on the page."""
+        x = self.canvas.canvasx(event.x)
+        y = self.canvas.canvasy(event.y)
+        object_index = self.get_object_at_canvas_position(x, y)
+
+        if object_index is None:
+            return
+
+        item = self.document_objects[object_index]
+        if item.get("type") != "text":
+            return
+
+        self.selected_object_index = object_index
+        self.update_toolbar_from_selected_object()
+        self.draw_page()
+        self.begin_text_edit(object_index)
+
+    def begin_text_edit(self, object_index):
+        """Place an editable Entry over the selected text object."""
+        if not (0 <= object_index < len(self.document_objects)):
+            return
+
+        item = self.document_objects[object_index]
+        if item.get("type") != "text":
+            return
+
+        self.finish_text_edit(save=True)
+        self.selected_object_index = object_index
+
+        bbox = self.canvas.bbox(f"object_{object_index}")
+        if not bbox:
+            return
+
+        font_name = item.get("font_family", "Arial")
+        font_size = max(1, int(item.get("font_size", 12) * self.zoom))
+        font_weight = "bold" if item.get("bold", False) else "normal"
+        font_slant = "italic" if item.get("italic", False) else "roman"
+        edit_font = tkfont.Font(
+            family=font_name,
+            size=font_size,
+            weight=font_weight,
+            slant=font_slant,
+            underline=item.get("underline", False),
+        )
+
+        x1, y1, x2, y2 = bbox
+        width = max(100, int(x2 - x1 + 24))
+        height = max(28, int(y2 - y1 + 14))
+
+        justify = {
+            "Left": tk.LEFT,
+            "Center": tk.CENTER,
+            "Right": tk.RIGHT,
+        }.get(item.get("alignment", "Left"), tk.LEFT)
+
+        entry = tk.Entry(
+            self.canvas,
+            font=edit_font,
+            fg=item.get("fill", "#222222"),
+            bg="white",
+            relief=tk.SOLID,
+            bd=1,
+            justify=justify,
+        )
+        entry.insert(0, item.get("text", ""))
+        entry.select_range(0, tk.END)
+
+        self.text_edit_entry = entry
+        self.text_edit_window = self.canvas.create_window(
+            (x1 + x2) / 2,
+            (y1 + y2) / 2,
+            window=entry,
+            width=width,
+            height=height,
+            tags=("text_editor",),
+        )
+
+        entry.bind("<Return>", self.finish_text_edit)
+        entry.bind("<Escape>", self.cancel_text_edit)
+        entry.bind("<FocusOut>", self.finish_text_edit)
+        entry.focus_set()
+
+        self.status_var.set(
+            "Editing text. Press Enter to save or Escape to cancel."
+        )
+
+    def finish_text_edit(self, event=None, save=True):
+        """Finish direct text editing and save the new text."""
+        entry = self.text_edit_entry
+        if entry is None:
+            return "break" if event is not None else None
+
+        object_index = self.selected_object_index
+        if save and object_index is not None and 0 <= object_index < len(self.document_objects):
+            item = self.document_objects[object_index]
+            if item.get("type") == "text":
+                new_text = entry.get().strip()
+                item["text"] = new_text if new_text else "New Text"
+
+        if self.text_edit_window is not None:
+            try:
+                self.canvas.delete(self.text_edit_window)
+            except tk.TclError:
+                pass
+
+        self.text_edit_entry = None
+        self.text_edit_window = None
+        self.draw_page()
+
+        if save:
+            self.status_var.set("Text updated.")
+
+        return "break" if event is not None else None
+
+    def cancel_text_edit(self, event=None):
+        """Cancel direct text editing without changing the stored text."""
+        if self.text_edit_entry is None:
+            return "break"
+
+        if self.text_edit_window is not None:
+            try:
+                self.canvas.delete(self.text_edit_window)
+            except tk.TclError:
+                pass
+
+        self.text_edit_entry = None
+        self.text_edit_window = None
+        self.draw_page()
+        self.status_var.set("Text edit cancelled.")
+        return "break"
+
     def canvas_click(self, event):
         self.canvas.focus_set()
 
@@ -653,6 +1250,7 @@ class DocumentCreatorApp:
 
         if object_index is not None:
             self.selected_object_index = object_index
+            self.update_toolbar_from_selected_object()
             self.dragging_object = True
             self.drag_start_x = x
             self.drag_start_y = y
@@ -705,6 +1303,7 @@ class DocumentCreatorApp:
 
     def delete_selected_object(self, event=None):
         """Delete the currently selected document object."""
+        self.finish_text_edit(save=True)
         if self.selected_object_index is None:
             self.status_var.set("No object selected to delete.")
             return "break"
@@ -723,6 +1322,15 @@ class DocumentCreatorApp:
         del self.document_objects[deleted_index]
         self.selected_object_index = None
         self.dragging_object = False
+        self.text_font_family_var.set("Arial")
+        self.text_font_size_var.set("12")
+        self.text_bold_var.set(False)
+        self.text_italic_var.set(False)
+        self.text_underline_var.set(False)
+        self.text_color = "#222222"
+        self.text_alignment = "Left"
+        self.update_color_button()
+        self.update_alignment_buttons()
 
         self.draw_page()
         self.status_var.set(
